@@ -1,105 +1,93 @@
+mod tokenize;
+mod parser;
+use tokenize::{get_tokenize, TokenType};
+use parser::{parser, AssigImpl, Expr, FunImpl, NumbImpl, OperaImpl, VarImpl};
+use std::collections::HashMap;
+use std::fs;
+use std::env;
 
-#[derive(Debug)]
-enum TokenType { 
-    NumberLiteral,// 1 2 3 4
-    Identifier, // a b c name , age
-    Equal, // =
-    Plus, // +
-    Minus,// - 
-    Star,// *
-    Slash,// /
-    LeftParan,// (
-    RightParan,// )
-    NewLine,//\n => delineating statement
-}
-use TokenType::*;
+type Env = HashMap<String, i32>; // aliase
 
-/*
-example : 123
-TokenType : NumberLiteral
-lexene : 123
-*/
-#[derive(Debug)]
-struct TOKEN 
-{
-    TokenType:TokenType,
-    lexene:String,
-}
+fn interpreter( parser : &Vec<Expr>, env: &mut Env ){
 
-fn get_tokenize(source_code : &str)->Vec::<TOKEN>{
+    for parse in parser {
+        check(parse, env);
 
-    let mut position  = 0;
-    let mut result  = Vec::<TOKEN>::new();
-    while position < source_code.len() {
-        let curr_char = source_code.chars().nth(position).unwrap();
-
-        match curr_char {
-            '(' => result.push(TOKEN{TokenType:LeftParan,lexene:curr_char.to_string()}),
-            ')' => result.push(TOKEN{TokenType:RightParan,lexene:curr_char.to_string()}),
-            '/' => result.push(TOKEN{TokenType:Slash,lexene:curr_char.to_string()}),
-            '*' => result.push(TOKEN{TokenType:Star,lexene:curr_char.to_string()}),
-            '-' => result.push(TOKEN{TokenType:Minus,lexene:curr_char.to_string()}),
-            '+' => result.push(TOKEN{TokenType:Plus,lexene:curr_char.to_string()}),
-            '=' => result.push(TOKEN{TokenType:Equal,lexene:curr_char.to_string()}),
-            '\n' => result.push(TOKEN{TokenType:NewLine,lexene:curr_char.to_string()}),
-            x if x.is_digit(10) =>{
-                let mut number_lexen = x.to_string();
-                position +=1;
-                while position < source_code.len() {
-                    let next_char = source_code.chars().nth(position).unwrap();
-                    if next_char == ' ' || next_char == '\n' || next_char == ')' {
-                        break;
-                    }
-                    if next_char.is_digit(10) {
-                        number_lexen.push(next_char);
-                        position +=1;
-                        continue;
-                    }else{
-                        panic!("Invalid character {:?}", next_char);
-                    }
-
-                }
-
-                result.push(TOKEN{TokenType:NumberLiteral,lexene:number_lexen.to_string()});
-                continue;
-
-            },
-            ' ' =>{},
-            iden => {// indentifier
-                let mut lexene  = iden.to_string();
-                position += 1;
-                while position < source_code.len() {
-                    let next_char = source_code.chars().nth(position).unwrap();
-                    if !next_char.is_alphanumeric() && !(next_char == '_') {
-                        break;
-                    }
-
-                    lexene.push(next_char);
-                    position += 1;
-
-                }
-                result.push(TOKEN{TokenType:Identifier,lexene:lexene.to_string()});
-                continue;
-            }
-
-
-
-
-        }
-        position += 1;
     }
-    result
+}
+
+//expressions yield values, statement don't
+fn check(parse : &Expr, env : &mut Env) -> i32{
+    match parse {
+        Expr::Number(NumbImpl{ value, ..})=>return *value,
+        Expr::Operation(OperaImpl{
+            lhs, 
+            operator, 
+            rhs})=>{
+                let lhs_value = check(lhs,env);
+                let rhs_value = check(rhs,env);
+                match operator.token_type {
+                    TokenType::Star =>return lhs_value * rhs_value,
+                    TokenType::Slash =>return lhs_value / rhs_value,
+                    TokenType::Minus =>return lhs_value - rhs_value,
+                    TokenType::Mod =>return lhs_value % rhs_value,
+                    TokenType::Plus =>return lhs_value + rhs_value,
+                    TokenType::Exponentiation =>return i32::pow(lhs_value, rhs_value as u32),
+                    _=>{panic!("this operator not valide")}
+                }
+
+        },
+        Expr::Assignment(AssigImpl{target,value})=>{
+            let result = check(value, env);
+
+            env.insert(target.token.lexene.clone(),result);
+
+            return result;
+        },
+        Expr::Variable(VarImpl{token})=>{
+            if let Some(value) = env.get(&token.lexene){
+                return *value;
+            }else{
+            panic!("this indentifier not found");
+            }
+        },
+        Expr::FunCall(FunImpl{name,arg})=>{
+            if name.token.lexene == "print" {   
+                let value = check(arg, env);
+                println!("{:?}",value);
+                return value; // 0 or -1
+            }else{
+                panic!("this function not implement yet ..");
+            }
+        }
+        _=>{panic!("sorry .....");},
+
+    }
+
 }
 
 
 fn main(){
-    let source  = "a = 1 + 2
-    print(a)
-    ";
-    let tokens = get_tokenize(source);
-    for token in tokens{
-    println!("{:?}",token);
+    let args : Vec<String>  = env::args().collect();
 
+    if args.len() > 1 {
+    let source = fs::read_to_string(&args[1])
+        .expect("Should have been able to read the file");
+
+    let tokens = get_tokenize(&source);
+    
+    // for token in tokens {
+    //     println!("{:?}", token);
+    // }
+    let result = parser(tokens);
+    // for expr in result{
+    //     println!(" ________{:?}", expr);
+    // }
+    let mut env : Env = HashMap::new();
+
+    interpreter(&result, &mut env);
+
+    }else{
+        println!("path not found");
     }
- 
 }
